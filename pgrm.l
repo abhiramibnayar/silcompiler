@@ -29,8 +29,8 @@
 "enddecl" {return ENDDECL;}
 "int" {return INT;}
 "str" {return STR;}
-["][a-z]+["] {yylval=makenode(0,3,yytext,10,NULL,NULL,NULL);return SCON;}
-[a-z0-9]+ {yylval=makenode(1,1,yytext,2,NULL,NULL,NULL);return ID;}
+["][a-z0-9 ]+["] {yylval=makenode(0,3,yytext,10,NULL,NULL,NULL);return SCON;}
+[a-z0-9]+ {yylval=makenode(0,1,yytext,2,NULL,NULL,NULL);return ID;}
 "[" {return *yytext;}
 "]" {return *yytext;}
 

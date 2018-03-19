@@ -26,7 +26,7 @@ struct tnode* makenode(int val, int type,char *op,int nodetype, struct tnode *le
       yyerror("variable not declared");
       exit(1);
     }
-    temp->type=temp->symtab->type;
+    temp->type=temp->symtab->type->vartype;
 
   }
   if((temp->op!=NULL && (strcmp(temp->op,"=")==0))||(type!=0 && left!=NULL && right!=NULL))//if the node isnt typeless
@@ -34,6 +34,7 @@ struct tnode* makenode(int val, int type,char *op,int nodetype, struct tnode *le
     if(left->type!=right->type)
      {
     printf("Type Mismatch\nCompilation Interrupted");
+    printf("The types are %d %d \n",left->type, right->type );
     exit(1);
      }
   }
@@ -144,21 +145,36 @@ int codegen(struct tnode *t)
   char opr;
   switch (t->nodetype) {
     case 1: //return const in a register
+
     p=getReg();
     fprintf(fp, "MOV R%d, %d\n",p,t->val );
     return p;
+
     break;
 
-    case 2:
-    p=getReg(); //return variable in register
-    fprintf(fp, "MOV R%d, [%d]\n",p,((t->symtab->binding)+(t->val-1)));
+    case 2: //return variable in register
+    if(stores==1)
+    return t->symtab->binding+t->val;
+    p=getReg();
+    fprintf(fp, "MOV R%d, [%d]\n",p,((t->symtab->binding)+(t->val)));
     return p;
     break;
 
     case 3: //code for read
     fprintf(fp, "MOV R0,\"Read\"\nPUSH R0\nMOV R0,-1\nPUSH R0\n");
-    a=t->left->symtab->binding+(t->left->val-1);
+    if(t->left->nodetype==2)
+    {
+    a=t->left->symtab->binding+(t->left->val);
     fprintf(fp, "MOV R0,%d\n",a);
+    }
+    else
+    {
+      stores=1;
+      a=codegen(t->left);
+      stores=0;
+      fprintf(fp, "MOV R0, R%d\n",a);
+    }
+
     fprintf(fp, "PUSH R0\nPUSH R0\nPUSH R0\nCALL 0\nPOP R0\nPOP R1\nPOP R1\nPOP R1\nPOP R1\n");
     return 1;
     break;
@@ -216,8 +232,16 @@ int codegen(struct tnode *t)
 
       case '=':
       l=codegen(t->right);
-      a=t->left->symtab->binding+(t->left->val)-1;
-      fprintf(fp,"MOV [%d],R%d\n",a,l);
+      stores=1;
+      a=codegen(t->left);
+      stores=0;
+      if(t->left->nodetype==11)
+      {
+      fprintf(fp,"MOV [R%d],R%d\n",a,l);
+      freeReg();
+      }
+      else
+      fprintf(fp, "MOV [%d],R%d\n",a,l);
       freeReg();
       return 1;
       break;
@@ -357,6 +381,53 @@ int codegen(struct tnode *t)
     fprintf(fp, "MOV R%d, %s\n",p,t->op );
     return p;
     break;
+
+    case 11: //array [i]
+    if(stores==1||stores==0)
+    {
+      stores=stores+10;
+    if(t->left->nodetype==2)
+    {
+    r=codegen(t->right);
+    l=t->left->symtab->binding;
+    fprintf(fp, "MUL R%d, %d\n",r,t->val );
+    fprintf(fp, "ADD R%d, %d\n",r,l);
+    stores=stores-10;
+    if(stores==0)
+    fprintf(fp, "MOV R%d, [R%d]\n",r,r);
+    return r;
+    }
+    else {
+    l=codegen(t->left);
+    r=codegen(t->right);
+    fprintf(fp , "MUL R%d, %d\n", r,t->val);
+    fprintf(fp, "ADD R%d, R%d\n",r,l);
+    stores=stores-10;
+    if(stores==0)
+    fprintf(fp, "MOV R%d, [R%d]\n",r,r);
+    return r;
+    }
+  }
+  if(stores>9)
+  {
+    if(t->left->nodetype==2)
+    {
+    r=codegen(t->right);
+    l=t->left->symtab->binding;
+    fprintf(fp, "MUL R%d, %d\n",r,t->val );
+    fprintf(fp, "ADD R%d, %d\n",r,l);
+    return r;
+    }
+    else {
+    l=codegen(t->left);
+    r=codegen(t->right);
+    fprintf(fp , "MUL R%d, %d\n", r,t->val);
+    fprintf(fp, "ADD R%d, R%d\n",r,l);
+    return r;
+    }
+  }
+    break;
+
     default:
     break;
 
@@ -392,16 +463,16 @@ struct symboltable* lookup(char *name)
   return sttemp;
 }
 
-void install(char *name, int type, int size)
+void install(char *name, struct ntype *ttype)
 {
   struct symboltable *sttemp=(struct symboltable*)malloc(sizeof(struct symboltable));
   sttemp->name=(char*)malloc(sizeof(char*));
   sttemp->name=name;
-  sttemp->type=type;
-  sttemp->size=size;
+  sttemp->type=ttype;
+  sttemp->size=ttype->width*ttype->arraysize;
   sttemp->next=NULL;
   sttemp->binding=staticmem;
-  staticmem=staticmem+size;
+  staticmem=staticmem+sttemp->size;
   if(sthead==NULL)
   {
     sthead=sttemp;
@@ -422,7 +493,7 @@ void printsymtable()
   printf("Symboltable\n");
   while(trv!=NULL)
   {
-    printf("%s, %d, %d, %d\n",trv->name,trv->type,trv->size,trv->binding );
+    printf("%s, %d, %d, %d, %d\n",trv->name,trv->type->vartype,trv->size,trv->type->width,trv->binding );
     trv=trv->next;
   }
 }

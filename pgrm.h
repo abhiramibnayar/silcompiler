@@ -9,7 +9,8 @@ arithmeticoperators=6;
 if-while=7;
 relationaloperators=8;
 breakcont=9;
-strconst=10
+strconst=10;
+array[i]=11;
 */
 
 
@@ -33,14 +34,23 @@ typedef struct tnode
   struct symboltable *symtab;
 }tnode;
 
+typedef struct ntype
+{
+  int vartype;
+  int arraysize;
+  int width;
+  struct ntype *elemtype;
+}ntype;
+
 typedef struct symboltable
 {
   char *name;
-  int type;
+  struct ntype *type;
   int size;
   int binding;
   struct symboltable *next;
 }symboltable;
+
 struct tnode* makenode(int val, int type,char *op,int nodetype, struct tnode *left, struct tnode *right,struct tnode *centre);
 //int evaluate(struct tnode*);
 void printtree(struct tnode*);
@@ -52,7 +62,7 @@ void pushws(int,int);
 void popws();
 
 struct symboltable* lookup(char*);
-void install(char*, int, int);
+void install(char*,struct ntype *type);
 void printsymtable();
 
 struct symboltable *sthead;
@@ -65,3 +75,4 @@ int whilestack[40];
 int wstop=0;
 int staticmem=4096;
 int decls=1;
+int stores=0;

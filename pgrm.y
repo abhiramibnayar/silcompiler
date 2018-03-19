@@ -8,6 +8,7 @@
   int reg;
   char *op = "abcdefg";
   int types;
+  struct ntype *type;
   int yylex(void);
   FILE *yyin;
 %}
@@ -37,48 +38,86 @@ program : BEG Declarations Slist END {
         | BEG Declarations END {$$=NULL;exit(1);}
         | BEG END {$$=NULL;exit(1);}
         ;
+        Declarations : DECL DeclList ENDDECL {decls=0;}
 
-Declarations : DECL DeclList ENDDECL {decls=0;}
              | DECL ENDDECL {decls=0;}
              ;
 
 DeclList : DeclList Decl
          | Decl
          ;
-Decl : Type VarList';'
-        {
-        struct tnode *t=$2;
-          while(t->nodetype==5)
-          {
-          if(t->right!=NULL)
-            {
-              if(lookup(t->right->op)!=NULL)
-              {
-                yyerror("redeclaration of variable");
-                exit(1);
-              }
-              install(t->right->op,types,t->right->val);
-            }
-          t=t->left;
-          }
-          if(lookup(t->op)!=NULL)
-          {
-            yyerror("redeclaration of variable");
-            exit(1);
-          }
-          install(t->op,types,t->val);
-
-        }
+Decl : Type VarList ';'
      ;
 
 Type : INT {types=1;}
      | STR {types=3;}
      ;
 
-VarList : VarList ',' ID {$3->val=1;$$=makenode(0,0,NULL,5,$1,$3,NULL);}
-        | VarList ',' AID {$$=makenode(0,0,NULL,5,$1,$3,NULL);}
-        | AID {$$=$1;}
-        | ID {$1->val=1; $$=$1;}
+VarList : VarList ',' ID {
+
+                          if(lookup($3->op)==NULL)
+                          {
+                          type=(struct ntype*)malloc(sizeof(struct ntype));
+                          type->vartype=types;
+                          type->arraysize=1;
+                          type->elemtype=NULL;
+                          type->width=1;
+                          install($3->op,type);
+                          }
+                          else
+                          {
+                          yyerror("redeclaration of variable");
+                          exit(1);
+                          }
+                          $$=$1;
+                        }
+        | VarList ',' AID {
+                            if(lookup($3->op)==NULL)
+                              {
+
+                                install($3->op,type);
+
+                              }
+                              else
+                              {
+                              yyerror("redeclaration of variable");
+                              exit(1);
+                              }
+                              $$=$1;
+
+                              }
+
+        | ID {
+
+              if(lookup($1->op)==NULL)
+              {
+              type=(struct ntype*)malloc(sizeof(struct ntype));
+              type->vartype=types;
+              type->arraysize=1;
+              type->elemtype=NULL;
+              type->width=1;
+              install($1->op,type);
+              }
+              else
+              {
+              yyerror("redeclaration of variable");
+              exit(1);
+              }
+
+            }
+        | AID {
+
+                  if(lookup($1->op)==NULL)
+                  {
+                  install($1->op,type);
+                  }
+                  else
+                  {
+                  yyerror("redeclaration of variable");
+                  exit(1);
+                  }
+
+                }
         ;
 
 Slist : Slist stmt {$$=makenode(0,0,NULL,5,$1,$2,NULL);}
@@ -101,11 +140,13 @@ whilestmt : WHILE '(' E ')' DO Slist ENDWHILE';' {op="while";$$=makenode(0,0,op,
                ;
 inputstmt : READ '(' ID ')' ';' {op="read";$$=makenode(0,0,op,3,$3,NULL,NULL);}
           | READ '(' AID ')' ';' {op="read";$$=makenode(0,0,op,3,$3,NULL,NULL);}
+          | READ '(' L ')' ';' {op="read";$$=makenode(0,0,op,3,$3,NULL,NULL);}
           ;
 outputstmt : WRITE '(' E ')' ';' {op="write";$$=makenode(0,0,op,4,$3,NULL,NULL);}
           ;
 asgstmt : ID ASG E';' {op="=";$$=makenode(0,0,op,6,$1,$3,NULL);}
         |  AID ASG E';' {op="=";$$=makenode(0,0,op,6,$1,$3,NULL);}
+        |  L ASG E';' {op="=";$$=makenode(0,0,op,6,$1,$3,NULL);}
         ;
 brkstmt : BRK';'{op="break",$$=makenode(0,0,op,9,NULL,NULL,NULL);}
         ;
@@ -113,6 +154,7 @@ cntstmt : CNT';'{op="continue",$$=makenode(0,0,op,9,NULL,NULL,NULL);}
 
 E : ID {$$=$1;}
   | AID {$$=$1;}
+  | L {$$=$1;}
   | E LT E {op="<";$$=makenode(0,2,op,8,$1,$3,NULL);}
   | E GT E {op=">";$$=makenode(0,2,op,8,$1,$3,NULL);}
   | E LE E {op="<=";$$=makenode(0,2,op,8,$1,$3,NULL);}
@@ -127,16 +169,56 @@ E : ID {$$=$1;}
   | NUM {$$=$1;}
   | SCON {$$=$1;}
   ;
-AID :ID'['NUM']' {
 
-                if((decls==0) &&(($3->val)>($1->symtab->size) || $3->val<1))
-                {
-                yyerror("ArrayOutOfException");
-                exit(1);
+L : L '['E']' {
+               type=type->elemtype;
+               $$=makenode(type->width,$1->type,$1->op,11,$1,$3,NULL);
+
+              }
+  | ID '['E']' {
+                type=lookup($1->op)->type;
+                $$=makenode(type->width,$1->type,$1->op,11,$1,$3,NULL);
+
                 }
-                $1->val=$3->val;$$=$1;
+  ;
+
+AID : ID ARR {
+            if(decls==0)
+            {
+            struct ntype *newtype=lookup($1->op)->type;
+            struct ntype *ttype=type;
+            int s=0;
+            while(newtype!=NULL)
+            {
+            s=s+ttype->arraysize*newtype->width;
+            newtype=newtype->elemtype;
+            ttype=ttype->elemtype;
+            }
+            $1->val=s;
+            }
+            $$=$1;
+}
+
+ARR : '['NUM']' ARR {
+                    struct ntype *newtype=(struct ntype*)malloc(sizeof(struct ntype));
+                    newtype->vartype=types;
+                    newtype->arraysize=$2->val;
+                    newtype->width=type->width*type->arraysize;
+                    newtype->elemtype=type;
+
+                    type=newtype;
+                    }
+    | '['NUM']' {
+                  struct ntype *newtype=(struct ntype*)malloc(sizeof(struct ntype));
+                  newtype->vartype=types;
+                  newtype->arraysize=$2->val;
+                  newtype->width=1;
+                  newtype->elemtype=NULL;
+                  type=newtype;
                 }
     ;
+
+
 %%
 
 yyerror(char const *s)
