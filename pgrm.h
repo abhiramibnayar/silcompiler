@@ -11,6 +11,9 @@ relationaloperators=8;
 breakcont=9;
 strconst=10;
 array[i]=11;
+returnstmt=12;
+functioncallstmt=13;
+arglistnode=14;
 */
 
 
@@ -31,7 +34,8 @@ typedef struct tnode
   struct tnode *left;
   struct tnode *right;
   struct tnode *centre;
-  struct symboltable *symtab;
+  struct localsymboltable *lsymtab;
+  struct globalsymboltable *gsymtab;
 }tnode;
 
 typedef struct ntype
@@ -42,18 +46,35 @@ typedef struct ntype
   struct ntype *elemtype;
 }ntype;
 
-typedef struct symboltable
+typedef struct globalsymboltable
 {
   char *name;
   struct ntype *type;
   int size;
   int binding;
-  struct symboltable *next;
-}symboltable;
+  struct parameterlist *plist;
+  int functionlabel;
+  struct globalsymboltable *nextentry;
+}globalsymboltable;
+
+
+typedef struct parameterlist
+{
+  char *name;
+  struct ntype *type;
+  struct parameterlist *nextentry;
+}parameterlist;
+
+typedef struct localsymboltable
+{
+  char *name;
+  struct ntype *type;
+  int size;
+  int binding;
+  struct localsymboltable *nextentry;
+}localsymboltable;
 
 struct tnode* makenode(int val, int type,char *op,int nodetype, struct tnode *left, struct tnode *right,struct tnode *centre);
-//int evaluate(struct tnode*);
-void printtree(struct tnode*);
 int getReg(void);
 void freeReg(void);
 int codegen(struct tnode*);
@@ -61,18 +82,25 @@ int getLabel(void);
 void pushws(int,int);
 void popws();
 
-struct symboltable* lookup(char*);
-void install(char*,struct ntype *type);
-void printsymtable();
+void gstinstall(char *name, struct ntype *type, int size, struct parameterlist *plist);
+struct globalsymboltable* gstlookup(char *name);
+void printglobalsymboltable();
 
-struct symboltable *sthead;
+void lstinstall(char*,struct ntype*);
+struct localsymboltable* lstlookup(char*);
+void printlocalsymboltable();
+
+struct globalsymboltable *gsthead;
+struct localsymboltable *lsthead;
 
 FILE *fp;
 int regallocate=3;
 int a[26];
-int label=0;
+int label=1;
 int whilestack[40];
 int wstop=0;
 int staticmem=4096;
 int decls=1;
 int stores=0;
+int localbinding=0;
+int mainfunction=0;
